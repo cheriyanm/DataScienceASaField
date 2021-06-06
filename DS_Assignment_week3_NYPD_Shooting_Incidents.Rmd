@@ -1,0 +1,142 @@
+---
+title: Analysis of the NYPD Shooting Incident Data
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+NYPD Shooting Incident Data contains every shooting incident that occurred in NYC since 2006 to 2020. This publicly available data is downloaded from <https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD>.
+
+Each rqw in the dataset represents a shooting event, which contain information like Time of the incident, Location, details about the victim and the Suspect and also the victim demographics is included.
+
+## Read Data
+
+Data is read using the absolute path of the local folder. 
+
+```{r read}
+library(tidyverse)
+nypd_dt <- read_csv("./NYPD_Shooting_Incident_Data__Historic_.csv")
+```
+
+## Tidy and Transform the Data
+
+Goal of the Tidying step is to ensure that...
+  
+  1. Each variable is in a column
+  2. Each observation is a row
+  3. Each value is a cell
+
+Furthermore, with the transform step we would look at the data types and add new columns and transformations as as necessary.
+
+From the columns of interest perspective the data looks tidy. However, the data type of date column is 'chr', which should be converted to date type.
+
+Following step will; 
+
+1. Convert the data type of OCCUR_DATE to date. 
+2. Remove the columns that is not required for the analysis
+3. Add a new column derived from OCCUR_DATE called OCCUR_YEAR for easy analysis
+
+There are missing data in some of the columns such as Age Group, Sex and race. These missing data with NA would be considered as a Unknown category in the Analysis.
+
+```{r transform, echo=TRUE}
+library(lubridate)
+nypd_dt <- nypd_dt %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  select(-c(Lon_Lat, Longitude, Latitude, X_COORD_CD, Y_COORD_CD))
+
+nypd_dt <- nypd_dt %>%
+  mutate(OCCUR_YEAR = year(OCCUR_DATE))
+
+summary(nypd_dt)
+```
+
+## Analysis and visualization
+
+### Analysis of Shooting Incidents by Year, Boro
+
+```{r Analyze, echo=TRUE}
+inc_by_year_boro <- nypd_dt %>%
+  group_by(OCCUR_YEAR, BORO) %>%
+  summarise(incidents = n()) %>%
+  select (OCCUR_YEAR, BORO, incidents) %>%
+  ungroup()
+
+inc_by_year_boro
+summary(inc_by_year_boro)
+```
+
+From the chart below it is observed that:
+
+1. Bronx has the most shooting incidents
+2. Shooting incidents declined since 2012 to 2019, but since 2019 there is a sharp increase.
+3. Staten Island has the lowest incidents
+
+```{r chart1, echo=TRUE}
+ggplot(inc_by_year_boro, aes(OCCUR_YEAR, incidents, colour = BORO)) +
+  geom_line() 
+```
+
+
+### Analysis of Shooting Incidents resulting in Death
+
+
+```{r chart2, echo=TRUE}
+NY_Incidents <- nypd_dt %>%
+  group_by(month=floor_date(OCCUR_DATE, "month")) %>%
+  summarise(incidents = n(), deaths = sum(STATISTICAL_MURDER_FLAG == TRUE)) %>%
+  mutate(deaths_per_incident = deaths/incidents) %>%
+  select(month, incidents, deaths, deaths_per_incident) %>%
+  ungroup()
+
+NY_Incidents
+```
+
+Following chart below shows the Shooting incidents across New York city and the relative
+deaths by month.
+
+```{r chart3, echo=TRUE}
+NY_Incidents %>%
+  ggplot(aes(x = month, y = incidents )) +
+  geom_line(aes(color = "incidents")) +
+  geom_point(aes(color= "incidents")) +
+  geom_line(aes(y = deaths, color="deaths")) +
+  geom_point(aes(y = deaths, color="deaths"))
+```
+
+### Modeling
+A linear model is used to figure the relationship between shooting incidents and deaths
+```{r model, echo=TRUE}
+mod <- lm(deaths ~ incidents, data = NY_Incidents)
+summary(mod)
+```
+
+### Use the Model to predict
+
+ 
+```{r predict, echo=TRUE}
+NY_Incidents_pred <- NY_Incidents %>% 
+  mutate(pred = predict(mod))
+NY_Incidents_pred
+```
+
+### Visualize the prediction
+
+From the plot below, it seems like the relationship between shooting incidents and deaths are linear.
+```{r vis, echo=TRUE}
+NY_Incidents_pred %>% ggplot() +
+  geom_point(aes(x = incidents, y = deaths ), color = "blue") +
+  geom_point(aes(x = incidents, y = pred ), color = "red")
+```
+
+
+## Biases
+
+A possible bias could be on the model selection. 
+
+
+
+
+
+
